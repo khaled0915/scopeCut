@@ -116,7 +116,7 @@
           <h2 class="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
             <i data-lucide="timer" class="h-4 w-4 text-amber-500"></i>01 // Time Remaining
           </h2>
-          <span id="capacity-note" class="font-mono text-[10px] uppercase tracking-wider text-zinc-500"></span>
+          <span id="capacity-note" class="font-mono text-[11px] text-zinc-500"></span>
         </div>
 
         <div class="flex items-end gap-4">
@@ -136,8 +136,12 @@
 
         <div class="mt-5">
           <input id="time-range" class="range" type="range" min="15" max="480" step="5" aria-label="Time remaining slider">
-          <div class="mt-2 flex justify-between font-mono text-[10px] text-zinc-600">
-            <span>15m</span><span>2h</span><span>4h</span><span>6h</span><span>8h</span>
+          <div class="relative mt-2 h-3 font-mono text-[10px] text-zinc-600">
+            <span class="absolute left-0">15m</span>
+            <span class="absolute -translate-x-1/2" style="left:22.58%">2h</span>
+            <span class="absolute -translate-x-1/2" style="left:48.39%">4h</span>
+            <span class="absolute -translate-x-1/2" style="left:74.19%">6h</span>
+            <span class="absolute right-0">8h</span>
           </div>
         </div>
 
@@ -232,7 +236,7 @@
           <h2 class="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400">
             <i data-lucide="zap" class="h-4 w-4"></i>Execute Now // Survival Schedule
           </h2>
-          <span id="exec-meta" class="font-mono text-[10px] uppercase tracking-wider text-zinc-500"></span>
+          <span id="exec-meta" class="font-mono text-[11px] text-zinc-500"></span>
         </div>
         <ol id="exec-list" class="flex flex-col gap-2"></ol>
       </div>
@@ -242,7 +246,7 @@
           <h2 class="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-rose-400">
             <i data-lucide="scissors" class="h-4 w-4"></i>Ruthlessly Cut // Kill List
           </h2>
-          <span id="cut-meta" class="font-mono text-[10px] uppercase tracking-wider text-zinc-500"></span>
+          <span id="cut-meta" class="font-mono text-[11px] text-zinc-500"></span>
         </div>
         <ul id="cut-list" class="flex flex-col gap-2"></ul>
       </div>
