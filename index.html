@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TRIAGE // PANIC MODE</title>
+  <meta name="description" content="A ruthless deadline triage engine: what to execute and what to cut when you are out of time.">
+  <meta name="theme-color" content="#09090b">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2309090b'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23f43f5e'/%3E%3C/svg%3E">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    html { color-scheme: dark; }
+    body { font-feature-settings: "ss01", "cv11"; }
+    .tac-grid {
+      background-image:
+        linear-gradient(rgba(63, 63, 70, 0.18) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(63, 63, 70, 0.18) 1px, transparent 1px);
+      background-size: 36px 36px;
+      mask-image: radial-gradient(ellipse at top, black 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse at top, black 30%, transparent 80%);
+    }
+    .range {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 9999px;
+      outline: none;
+      cursor: pointer;
+      background: linear-gradient(to right, #f59e0b 0%, #f59e0b var(--fill, 50%), #27272a var(--fill, 50%), #27272a 100%);
+    }
+    .range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 9999px;
+      background: #09090b;
+      border: 3px solid #f59e0b;
+      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18);
+      transition: box-shadow 150ms ease;
+    }
+    .range::-webkit-slider-thumb:hover { box-shadow: 0 0 0 7px rgba(245, 158, 11, 0.22); }
+    .range::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 9999px;
+      background: #09090b;
+      border: 3px solid #f59e0b;
+      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.18);
+    }
+    .range:focus-visible { box-shadow: 0 0 0 2px #09090b, 0 0 0 4px rgba(245, 158, 11, 0.6); }
+    .no-spin::-webkit-outer-spin-button,
+    .no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .no-spin { -moz-appearance: textfield; appearance: textfield; }
+    .invalid { color: #fb7185 !important; }
+    .stripes {
+      background-image: linear-gradient(45deg, rgba(255,255,255,0.18) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.18) 50%, rgba(255,255,255,0.18) 75%, transparent 75%, transparent);
+      background-size: 18px 18px;
+      animation: stripes 0.9s linear infinite;
+    }
+    @keyframes stripes { from { background-position: 0 0; } to { background-position: 18px 0; } }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-5px); }
+      40%, 80% { transform: translateX(5px); }
+    }
+    .shake { animation: shake 0.35s ease-in-out; }
+    @keyframes flash-in {
+      0% { background-color: rgba(245, 158, 11, 0.18); }
+      100% { background-color: rgba(9, 9, 11, 0.6); }
+    }
+    .flash-in { animation: flash-in 1.2s ease-out; }
+    .scroll-thin::-webkit-scrollbar { width: 6px; }
+    .scroll-thin::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 9999px; }
+    .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</head>
+<body class="min-h-full bg-zinc-950 text-zinc-200 antialiased selection:bg-amber-500/30">
+  <div class="tac-grid pointer-events-none fixed inset-0"></div>
+  <div class="pointer-events-none fixed inset-x-0 top-0 h-72 bg-gradient-to-b from-rose-500/[0.07] to-transparent"></div>
+
+  <header class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/85 backdrop-blur">
+    <div class="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+      <div class="flex items-center gap-3">
+        <span class="relative flex h-3 w-3" aria-hidden="true">
+          <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-75"></span>
+          <span class="relative inline-flex h-3 w-3 rounded-full bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.9)]"></span>
+        </span>
+        <h1 class="font-mono text-lg font-black tracking-tight text-zinc-50 sm:text-xl">TRIAGE <span class="text-rose-500">//</span> PANIC MODE</h1>
+        <span id="live-clock" class="hidden rounded border border-zinc-800 bg-zinc-900 px-2 py-0.5 font-mono text-xs tabular-nums text-zinc-400 sm:inline">--:--:--</span>
+      </div>
+      <nav class="flex flex-wrap items-center gap-2" aria-label="Load preset">
+        <span class="mr-1 font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">Load preset</span>
+        <button type="button" data-preset="hackathon" class="preset-btn">
+          <i data-lucide="flame" class="h-3.5 w-3.5"></i>Hackathon Crunch <span class="font-mono opacity-70">(45m)</span>
+        </button>
+        <button type="button" data-preset="exam" class="preset-btn">
+          <i data-lucide="graduation-cap" class="h-3.5 w-3.5"></i>Exam All-Nighter <span class="font-mono opacity-70">(4h)</span>
+        </button>
+        <button type="button" data-preset="launch" class="preset-btn">
+          <i data-lucide="rocket" class="h-3.5 w-3.5"></i>Client Launch <span class="font-mono opacity-70">(3h)</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="relative mx-auto grid max-w-7xl grid-cols-1 gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,45fr)_minmax(0,55fr)]">
+
+    <!-- LEFT: Situation & Task Input -->
+    <section class="flex flex-col gap-5" aria-label="Situation and task input">
+
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/90 p-5 shadow-xl shadow-black/30">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
+            <i data-lucide="timer" class="h-4 w-4 text-amber-500"></i>01 // Time Remaining
+          </h2>
+          <span id="capacity-note" class="font-mono text-[10px] uppercase tracking-wider text-zinc-500"></span>
+        </div>
+
+        <div class="flex items-end gap-4">
+          <label class="flex items-baseline gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 transition focus-within:border-amber-500/60">
+            <input id="time-input" type="number" min="15" max="480" step="1" inputmode="numeric" aria-label="Time remaining in minutes"
+              class="no-spin w-20 bg-transparent font-mono text-4xl font-bold tabular-nums text-amber-400 outline-none">
+            <span class="font-mono text-sm text-zinc-500">min</span>
+          </label>
+          <div class="flex flex-wrap gap-1.5 pb-1">
+            <button type="button" data-action="set-minutes" data-minutes="30" class="time-chip">30m</button>
+            <button type="button" data-action="set-minutes" data-minutes="45" class="time-chip">45m</button>
+            <button type="button" data-action="set-minutes" data-minutes="90" class="time-chip">90m</button>
+            <button type="button" data-action="set-minutes" data-minutes="180" class="time-chip">3h</button>
+            <button type="button" data-action="set-minutes" data-minutes="240" class="time-chip">4h</button>
+          </div>
+        </div>
+
+        <div class="mt-5">
+          <input id="time-range" class="range" type="range" min="15" max="480" step="5" aria-label="Time remaining slider">
+          <div class="mt-2 flex justify-between font-mono text-[10px] text-zinc-600">
+            <span>15m</span><span>2h</span><span>4h</span><span>6h</span><span>8h</span>
+          </div>
+        </div>
+
+        <div class="mt-5 flex items-center justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2.5">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 text-sm font-medium text-zinc-200">
+              <i data-lucide="shield" class="h-4 w-4 text-amber-500"></i>Include 10% Emergency Buffer
+            </div>
+            <p class="mt-0.5 text-xs text-zinc-500">Reserve margin for the thing that will definitely go wrong.</p>
+          </div>
+          <button id="buffer-toggle" type="button" role="switch" aria-checked="true" aria-label="Include 10% emergency buffer" data-action="buffer-toggle"
+            class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors">
+            <span id="buffer-knob" class="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform"></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/90 p-5 shadow-xl shadow-black/30">
+        <h2 class="mb-4 flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
+          <i data-lucide="plus-square" class="h-4 w-4 text-amber-500"></i>02 // Quick-Add Task
+        </h2>
+        <form id="add-form" class="grid grid-cols-6 gap-3" novalidate autocomplete="off">
+          <label class="col-span-6 block">
+            <span class="mb-1 block font-mono text-[10px] uppercase tracking-wider text-zinc-500">Task name</span>
+            <input id="add-name" type="text" maxlength="80" placeholder="e.g. Record 60s demo video"
+              class="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none transition focus:border-amber-500/60 focus:ring-2 focus:ring-amber-500/20">
+          </label>
+          <label class="col-span-3 block sm:col-span-2">
+            <span class="mb-1 block font-mono text-[10px] uppercase tracking-wider text-zinc-500">Effort (min)</span>
+            <input id="add-effort" type="number" min="1" max="600" step="1" value="15" inputmode="numeric"
+              class="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none transition focus:border-amber-500/60 focus:ring-2 focus:ring-amber-500/20">
+          </label>
+          <label class="col-span-3 block sm:col-span-2">
+            <span class="mb-1 block font-mono text-[10px] uppercase tracking-wider text-zinc-500">Impact (1–10)</span>
+            <input id="add-impact" type="number" min="1" max="10" step="1" value="5" inputmode="numeric"
+              class="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-sm text-zinc-100 outline-none transition focus:border-amber-500/60 focus:ring-2 focus:ring-amber-500/20">
+          </label>
+          <div class="col-span-6 flex items-end sm:col-span-2">
+            <button type="submit"
+              class="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-zinc-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-400 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">
+              <i data-lucide="plus" class="h-4 w-4"></i>Add Task
+            </button>
+          </div>
+          <p id="add-error" class="col-span-6 hidden font-mono text-xs text-rose-400" role="alert"></p>
+        </form>
+      </div>
+
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/90 p-5 shadow-xl shadow-black/30">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-zinc-400">
+            <i data-lucide="list-checks" class="h-4 w-4 text-amber-500"></i>03 // Task Backlog
+            <span id="task-count" class="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-300">0</span>
+          </h2>
+          <button type="button" data-action="clear-all"
+            class="flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400">
+            <i data-lucide="trash-2" class="h-3 w-3"></i>Clear all
+          </button>
+        </div>
+        <ul id="task-list" class="flex flex-col gap-2"></ul>
+        <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-800 pt-3 font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+          <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-amber-500"></span>Live</span>
+          <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Execute</span>
+          <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-rose-500"></span>Cut</span>
+          <span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-zinc-600"></span>Done</span>
+          <span class="ml-auto normal-case tracking-normal text-zinc-600">Edit effort / impact inline</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: Triage Output & Live Execution -->
+    <section class="flex flex-col gap-5" aria-label="Triage output">
+
+      <div class="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/90 px-5 py-4 shadow-xl shadow-black/30 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-zinc-300">
+            <i data-lucide="crosshair" class="h-4 w-4 text-rose-500"></i>Triage Output
+          </h2>
+          <p id="deadline-readout" class="mt-1 font-mono text-xs tabular-nums text-zinc-500">&nbsp;</p>
+        </div>
+        <button id="copy-btn" type="button" data-action="copy-md"
+          class="flex items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/70 px-3.5 py-2 text-sm font-medium text-zinc-200 transition hover:border-emerald-500/50 hover:bg-zinc-800 hover:text-emerald-300 active:scale-[0.98]">
+          <i data-lucide="copy" class="h-4 w-4"></i><span id="copy-label">Copy Markdown Plan</span>
+        </button>
+      </div>
+
+      <div id="kpis" class="grid grid-cols-3 gap-3"></div>
+
+      <div id="timer-panel"></div>
+
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/90 p-5 shadow-xl shadow-black/30">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400">
+            <i data-lucide="zap" class="h-4 w-4"></i>Execute Now // Survival Schedule
+          </h2>
+          <span id="exec-meta" class="font-mono text-[10px] uppercase tracking-wider text-zinc-500"></span>
+        </div>
+        <ol id="exec-list" class="flex flex-col gap-2"></ol>
+      </div>
+
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/90 p-5 shadow-xl shadow-black/30">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.2em] text-rose-400">
+            <i data-lucide="scissors" class="h-4 w-4"></i>Ruthlessly Cut // Kill List
+          </h2>
+          <span id="cut-meta" class="font-mono text-[10px] uppercase tracking-wider text-zinc-500"></span>
+        </div>
+        <ul id="cut-list" class="flex flex-col gap-2"></ul>
+      </div>
+
+      <p class="text-center font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-600">
+        ROI = Impact ÷ Effort · Greedy pack by ROI · Recalculated on every change
+      </p>
+    </section>
+  </main>
+
+  <div id="toast" role="status" aria-live="polite"
+    class="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 translate-y-4 opacity-0 transition-all duration-300">
+    <div id="toast-inner" class="flex items-center gap-2 rounded-lg border bg-zinc-900/95 px-4 py-2.5 font-mono text-sm shadow-2xl shadow-black/50 backdrop-blur">
+      <span id="toast-icon" class="flex"></span><span id="toast-msg"></span>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    const MIN_TIME = 15;
+    const MAX_TIME = 480;
+    const MAX_EFFORT = 600;
+    const BUFFER_RATIO = 0.1;
+
+    const PRESETS = {
+      hackathon: {
+        label: 'Hackathon Crunch',
+        minutes: 45,
+        buffer: true,
+        tasks: [
+          { name: 'Core logic — main demo flow working end-to-end', effort: 20, impact: 10 },
+          { name: 'User auth (OAuth login + sessions)', effort: 25, impact: 7 },
+          { name: 'Dark mode toggle', effort: 10, impact: 2 },
+          { name: 'Deploy skeleton to production (Vercel)', effort: 8, impact: 9 },
+          { name: 'Pitch deck — 5 slides + demo script', effort: 12, impact: 8 },
+          { name: 'Custom logo & brand assets', effort: 15, impact: 2 }
+        ]
+      },
+      exam: {
+        label: 'Exam All-Nighter',
+        minutes: 240,
+        buffer: true,
+        tasks: [
+          { name: 'Calculus: integration techniques (30% of exam)', effort: 60, impact: 10 },
+          { name: 'Probability distributions (25% of exam)', effort: 60, impact: 8 },
+          { name: 'Linear algebra: eigenvalues (20% of exam)', effort: 50, impact: 7 },
+          { name: 'Differential equations (15% of exam)', effort: 70, impact: 5 },
+          { name: 'Timed past-paper speed run', effort: 45, impact: 8 },
+          { name: 'Rewrite notes with color-coding', effort: 40, impact: 1 }
+        ]
+      },
+      launch: {
+        label: 'Client Launch',
+        minutes: 180,
+        buffer: true,
+        tasks: [
+          { name: 'Fix P0 checkout payment bug', effort: 40, impact: 10 },
+          { name: 'Production DB migration + verified backup', effort: 30, impact: 9 },
+          { name: 'Smoke test critical user flows', effort: 25, impact: 8 },
+          { name: 'Write client-facing release notes', effort: 20, impact: 4 },
+          { name: 'Load test + autoscaling config', effort: 70, impact: 8 },
+          { name: 'Pixel-perfect animation polish', effort: 60, impact: 3 }
+        ]
+      }
+    };
+
+    const STATUS = {
+      live: { strip: 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.7)]', label: 'LIVE', text: 'text-amber-400' },
+      exec: { strip: 'bg-emerald-500', label: 'EXECUTE', text: 'text-emerald-400' },
+      cut: { strip: 'bg-rose-500', label: 'CUT', text: 'text-rose-400' },
+      done: { strip: 'bg-zinc-600', label: 'DONE', text: 'text-zinc-500' }
+    };
+
+    const PRESET_BASE = 'preset-btn inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60';
+    const PRESET_ON = ' border-amber-500/60 bg-amber-500/10 text-amber-300 shadow-[0_0_20px_-6px_rgba(245,158,11,0.6)]';
+    const PRESET_OFF = ' border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-800 hover:text-zinc-100';
+    const CHIP_BASE = 'time-chip rounded-md border px-2 py-1 font-mono text-[11px] transition';
+    const CHIP_ON = ' border-amber-500/60 bg-amber-500/10 text-amber-300';
+    const CHIP_OFF = ' border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200';
+    const CLOCK_BASE = 'font-mono text-5xl font-bold tabular-nums tracking-tight sm:text-6xl transition-colors';
+    const BAR_BASE = 'h-full rounded-full transition-[width] duration-300 ease-linear';
+
+    const state = {
+      minutes: 45,
+      buffer: true,
+      tasks: [],
+      preset: null,
+      sessionStart: Date.now()
+    };
+
+    const timer = { taskId: null, accMs: 0, running: false, since: 0 };
+    let autoStartNext = false;
+    let lastResult = null;
+    let lastMinuteKey = Math.floor(Date.now() / 60000);
+    let toastTimeout = null;
+    let copyTimeout = null;
+    let seq = 0;
+
+    const el = {
+      timeInput: document.getElementById('time-input'),
+      timeRange: document.getElementById('time-range'),
+      bufferToggle: document.getElementById('buffer-toggle'),
+      bufferKnob: document.getElementById('buffer-knob'),
+      capacityNote: document.getElementById('capacity-note'),
+      addForm: document.getElementById('add-form'),
+      addName: document.getElementById('add-name'),
+      addEffort: document.getElementById('add-effort'),
+      addImpact: document.getElementById('add-impact'),
+      addError: document.getElementById('add-error'),
+      taskList: document.getElementById('task-list'),
+      taskCount: document.getElementById('task-count'),
+      kpis: document.getElementById('kpis'),
+      timerPanel: document.getElementById('timer-panel'),
+      execList: document.getElementById('exec-list'),
+      execMeta: document.getElementById('exec-meta'),
+      cutList: document.getElementById('cut-list'),
+      cutMeta: document.getElementById('cut-meta'),
+      liveClock: document.getElementById('live-clock'),
+      deadline: document.getElementById('deadline-readout'),
+      copyLabel: document.getElementById('copy-label'),
+      toast: document.getElementById('toast'),
+      toastInner: document.getElementById('toast-inner'),
+      toastIcon: document.getElementById('toast-icon'),
+      toastMsg: document.getElementById('toast-msg')
+    };
+
+    /* ---------- Utilities ---------- */
+
+    const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+    const pad = (n) => String(n).padStart(2, '0');
+    const uid = () => 't' + Date.now().toString(36) + (seq++).toString(36);
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function mdEscape(str) {
+      return String(str).replace(/([\\`*_~\[\]])/g, '\\$1');
+    }
+
+    function displayName(task) {
+      const n = task.name.trim();
+      return n.length ? n : 'Untitled task';
+    }
+
+    function fmtClock(ms) {
+      const d = new Date(ms);
+      return pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+
+    function fmtClockSec(ms) {
+      const d = new Date(ms);
+      return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    }
+
+    function fmtDate(ms) {
+      const d = new Date(ms);
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + fmtClock(ms);
+    }
+
+    function fmtNum(n) {
+      const r = Math.round(n * 10) / 10;
+      return Number.isInteger(r) ? String(r) : r.toFixed(1);
+    }
+
+    function fmtMin(n) {
+      return fmtNum(n) + 'm';
+    }
+
+    function fmtRoi(n) {
+      return n.toFixed(2);
+    }
+
+    function fmtCountdown(ms) {
+      const total = Math.max(0, Math.floor(ms / 1000));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      return h ? h + ':' + pad(m) + ':' + pad(s) : pad(m) + ':' + pad(s);
+    }
+
+    function icons() {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      }
+    }
+
+    function findTask(id) {
+      return state.tasks.find((t) => t.id === id) || null;
+    }
+
+    function capacityOf() {
+      return state.buffer ? state.minutes * (1 - BUFFER_RATIO) : state.minutes;
+    }
+
+    function timerElapsed() {
+      return timer.accMs + (timer.running ? Date.now() - timer.since : 0);
+    }
+
+    function resetTimerState() {
+      timer.taskId = null;
+      timer.accMs = 0;
+      timer.running = false;
+      timer.since = 0;
+    }
+
+    /* ---------- Core Triage Engine ---------- */
+
+    function triage() {
+      const now = Date.now();
+      const available = state.minutes;
+      const capacity = capacityOf();
+      const deadline = state.sessionStart + available * 60000;
+      const elapsed = timerElapsed();
+
+      const done = state.tasks.filter((t) => t.done).sort((a, b) => a.completedAt - b.completedAt);
+      const inProgress = state.tasks.find((t) =>
+        !t.done && t.id === timer.taskId && (timer.running || elapsed > 0)) || null;
+
+      let used = done.reduce((s, t) => s + t.effort, 0) + (inProgress ? inProgress.effort : 0);
+
+      const pool = state.tasks
+        .filter((t) => !t.done && t !== inProgress)
+        .map((t) => ({ task: t, roi: t.impact / t.effort }))
+        .sort((a, b) => (b.roi - a.roi) || (b.task.impact - a.task.impact) || (a.task.effort - b.task.effort));
+
+      const packed = [];
+      const rejected = [];
+      for (const item of pool) {
+        if (used + item.task.effort <= capacity + 1e-9) {
+          packed.push(item.task);
+          used += item.task.effort;
+        } else {
+          rejected.push({ task: item.task, roi: item.roi, remaining: Math.max(0, capacity - used) });
+        }
+      }
+
+      const execTasks = done.concat(inProgress ? [inProgress] : [], packed);
+      const execRois = execTasks.map((t) => t.impact / t.effort);
+      const roiFloor = execRois.length ? Math.min.apply(null, execRois) * 0.5 : 0;
+
+      let cursor = now;
+      let active = null;
+      let activeIndex = -1;
+      const exec = execTasks.map((task, i) => {
+        const roi = task.impact / task.effort;
+        if (task.done) {
+          return { task, roi, status: 'done', start: null, end: task.completedAt, late: false };
+        }
+        let start;
+        let end;
+        let status;
+        if (!active) {
+          const el0 = timer.taskId === task.id ? elapsed : 0;
+          start = now - el0;
+          end = Math.max(start + task.effort * 60000, now);
+          status = 'live';
+        } else {
+          start = cursor;
+          end = cursor + task.effort * 60000;
+          status = 'exec';
+        }
+        cursor = end;
+        const entry = { task, roi, status, start, end, late: end > deadline + 1000 };
+        if (!active) {
+          active = entry;
+          activeIndex = i;
+        }
+        return entry;
+      });
+
+      const cut = rejected.map((r) => {
+        let tag;
+        let detail;
+        if (r.task.effort > capacity + 1e-9) {
+          tag = 'EXCEEDS TIME';
+          detail = 'Needs ' + fmtMin(r.task.effort) + ' · whole window is only ' + fmtMin(capacity);
+        } else if (r.roi < roiFloor) {
+          tag = 'LOW ROI';
+          detail = 'ROI ' + fmtRoi(r.roi) + ' · under half the weakest kept task';
+        } else {
+          tag = 'EXCEEDS TIME';
+          detail = 'Needs ' + fmtMin(r.task.effort) + ' · only ' + fmtMin(r.remaining) + ' left after higher-ROI work';
+        }
+        return { task: r.task, roi: r.roi, tag, detail };
+      });
+
+      const totalImpact = state.tasks.reduce((s, t) => s + t.impact, 0);
+      const execImpact = execTasks.reduce((s, t) => s + t.impact, 0);
+      const cutMinutes = cut.reduce((s, c) => s + c.task.effort, 0);
+
+      const statusById = new Map();
+      exec.forEach((e) => statusById.set(e.task.id, e.status));
+      cut.forEach((c) => statusById.set(c.task.id, 'cut'));
+
+      const next = exec.find((e, i) => i > activeIndex && e.status === 'exec') || null;
+
+      return {
+        available,
+        capacity,
+        bufferMin: available - capacity,
+        deadline,
+        exec,
+        cut,
+        active,
+        activeIndex,
+        next,
+        used,
+        totalImpact,
+        execImpact,
+        impactPct: totalImpact ? Math.round((execImpact / totalImpact) * 100) : 0,
+        cutMinutes,
+        statusById,
+        pendingCount: exec.filter((e) => e.status !== 'done').length,
+        doneCount: done.length
+      };
+    }
+
+    function syncTimer(r) {
+      if (!r.active) {
+        if (timer.taskId) {
+          const t = findTask(timer.taskId);
+          if (!t || t.done) resetTimerState();
+        }
+        autoStartNext = false;
+        return;
+      }
+      if (timer.taskId !== r.active.task.id) {
+        timer.taskId = r.active.task.id;
+        timer.accMs = 0;
+        timer.running = autoStartNext;
+        timer.since = Date.now();
+      }
+      autoStartNext = false;
+    }
+
+    /* ---------- Rendering ---------- */
+
+    function render(opts) {
+      const options = opts || {};
+      lastResult = triage();
+      syncTimer(lastResult);
+      renderKpis(lastResult);
+      renderTimer(lastResult);
+      renderExec(lastResult);
+      renderCut(lastResult);
+      if (options.list === false) updateTaskRowMeta(lastResult);
+      else renderTaskList(lastResult);
+      renderPresets();
+      updateDeadline();
+      icons();
+    }
+
+    function renderControls(opts) {
+      const options = opts || {};
+      if (!options.skipNumber) el.timeInput.value = state.minutes;
+      el.timeRange.value = state.minutes;
+      const fill = ((state.minutes - MIN_TIME) / (MAX_TIME - MIN_TIME)) * 100;
+      el.timeRange.style.setProperty('--fill', fill + '%');
+
+      el.bufferToggle.setAttribute('aria-checked', String(state.buffer));
+      el.bufferToggle.className = 'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 ' +
+        (state.buffer ? 'border-amber-400 bg-amber-500' : 'border-zinc-700 bg-zinc-800');
+      el.bufferKnob.className = 'inline-block h-4 w-4 rounded-full shadow transition-transform ' +
+        (state.buffer ? 'translate-x-6 bg-zinc-950' : 'translate-x-1 bg-zinc-400');
+
+      const cap = capacityOf();
+      el.capacityNote.innerHTML = state.buffer
+        ? 'Usable <span class="text-amber-400">' + fmtMin(cap) + '</span> · ' + fmtMin(state.minutes - cap) + ' reserved'
+        : 'Usable <span class="text-amber-400">' + fmtMin(cap) + '</span> · <span class="text-rose-400">zero margin</span>';
+
+      document.querySelectorAll('[data-action="set-minutes"]').forEach((b) => {
+        const on = parseInt(b.dataset.minutes, 10) === state.minutes;
+        b.className = CHIP_BASE + (on ? CHIP_ON : CHIP_OFF);
+      });
+    }
+
+    function renderPresets() {
+      document.querySelectorAll('[data-preset]').forEach((b) => {
+        const on = b.dataset.preset === state.preset;
+        b.className = PRESET_BASE + (on ? PRESET_ON : PRESET_OFF);
+        b.setAttribute('aria-pressed', String(on));
+      });
+    }
+
+    function kpiCard(c) {
+      const toneText = { emerald: 'text-emerald-400', amber: 'text-amber-400', rose: 'text-rose-400' }[c.tone];
+      const toneBorder = { emerald: 'hover:border-emerald-500/40', amber: 'hover:border-amber-500/40', rose: 'hover:border-rose-500/40' }[c.tone];
+      return '' +
+        '<div class="group rounded-xl border border-zinc-800 bg-zinc-900/90 p-3 shadow-xl shadow-black/30 transition-colors sm:p-4 ' + toneBorder + '">' +
+          '<div class="flex items-start justify-between gap-2">' +
+            '<span class="font-mono text-[9px] uppercase leading-tight tracking-[0.18em] text-zinc-500 sm:text-[10px]">' + c.label + '</span>' +
+            '<i data-lucide="' + c.icon + '" class="h-4 w-4 shrink-0 ' + toneText + '"></i>' +
+          '</div>' +
+          '<div class="mt-2 flex items-baseline gap-1 font-mono font-bold tabular-nums ' + toneText + '">' + c.value + '</div>' +
+          '<div class="mt-1 truncate font-mono text-[10px] text-zinc-500 sm:text-[11px]">' + c.sub + '</div>' +
+          '<div class="mt-3 h-1 overflow-hidden rounded-full bg-zinc-800">' +
+            '<div class="h-full rounded-full transition-all duration-500 ' + c.barCls + '" style="width:' + clamp(c.bar, 0, 100).toFixed(1) + '%"></div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    function renderKpis(r) {
+      const over = r.used > r.capacity + 1e-9;
+      const usedPct = r.available ? (r.used / r.available) * 100 : 0;
+      const killedPct = state.tasks.length ? (r.cut.length / state.tasks.length) * 100 : 0;
+      el.kpis.innerHTML =
+        kpiCard({
+          label: 'Impact Captured',
+          icon: 'target',
+          tone: 'emerald',
+          value: '<span class="text-2xl sm:text-3xl">' + r.impactPct + '</span><span class="text-base text-emerald-600">%</span>',
+          sub: r.execImpact + ' / ' + r.totalImpact + ' impact pts',
+          bar: r.impactPct,
+          barCls: 'bg-emerald-500'
+        }) +
+        kpiCard({
+          label: 'Time Utilized',
+          icon: 'hourglass',
+          tone: over ? 'rose' : 'amber',
+          value: '<span class="text-2xl sm:text-3xl">' + fmtMin(r.used) + '</span><span class="text-sm text-zinc-500">/ ' + r.available + 'm</span>',
+          sub: over ? 'OVER CAPACITY' : Math.round(usedPct) + '% of window' + (state.buffer ? ' · ' + fmtMin(r.bufferMin) + ' buffer' : ''),
+          bar: usedPct,
+          barCls: over ? 'bg-rose-500' : 'bg-amber-500'
+        }) +
+        kpiCard({
+          label: 'Tasks Killed',
+          icon: 'skull',
+          tone: 'rose',
+          value: '<span class="text-2xl sm:text-3xl">' + r.cut.length + '</span><span class="text-sm text-zinc-500">/ ' + state.tasks.length + '</span>',
+          sub: fmtMin(r.cutMinutes) + ' saved',
+          bar: killedPct,
+          barCls: 'bg-rose-500'
+        });
+    }
+
+    function emptyPanel(icon, tone, title, body) {
+      const toneText = { emerald: 'text-emerald-400', amber: 'text-amber-400', rose: 'text-rose-400', zinc: 'text-zinc-400' }[tone];
+      const toneRing = { emerald: 'border-emerald-500/40', amber: 'border-amber-500/40', rose: 'border-rose-500/40', zinc: 'border-zinc-800' }[tone];
+      return '' +
+        '<div class="rounded-xl border ' + toneRing + ' bg-zinc-900/90 p-6 text-center shadow-xl shadow-black/30">' +
+          '<div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-zinc-950 ring-1 ring-zinc-800">' +
+            '<i data-lucide="' + icon + '" class="h-6 w-6 ' + toneText + '"></i>' +
+          '</div>' +
+          '<h3 class="mt-3 font-mono text-sm font-bold uppercase tracking-[0.2em] ' + toneText + '">' + title + '</h3>' +
+          '<p class="mx-auto mt-1 max-w-sm text-sm text-zinc-500">' + body + '</p>' +
+        '</div>';
+    }
+
+    function renderTimer(r) {
+      if (!state.tasks.length) {
+        el.timerPanel.innerHTML = emptyPanel('inbox', 'zinc', 'No tasks loaded', 'Add a task on the left or load a preset to start triage.');
+        return;
+      }
+      if (!r.active) {
+        if (r.doneCount && !r.pendingCount) {
+          el.timerPanel.innerHTML = emptyPanel('check-check', 'emerald', 'Survival schedule complete',
+            r.cut.length
+              ? 'Every executable task is done. ' + r.cut.length + ' cut task' + (r.cut.length === 1 ? '' : 's') + ' remain — only revisit if real time is left.'
+              : 'Every task is done. Ship it.');
+        } else {
+          el.timerPanel.innerHTML = emptyPanel('siren', 'rose', 'Nothing fits',
+            'Every task exceeds the usable window of ' + fmtMin(r.capacity) + '. Add time, drop the buffer, or split tasks smaller.');
+        }
+        return;
+      }
+
+      const a = r.active;
+      const t = a.task;
+      const position = r.exec.filter((e) => e.status !== 'done').indexOf(a) + 1;
+      const stateLabel = timer.running ? 'RUNNING' : (timerElapsed() > 0 ? 'PAUSED' : 'STANDBY');
+      const dot = timer.running
+        ? '<span class="relative flex h-2 w-2"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span><span class="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span></span>'
+        : '<span class="inline-flex h-2 w-2 rounded-full bg-amber-500/50"></span>';
+      const toggleIcon = timer.running ? 'pause' : 'play';
+      const toggleText = timer.running ? 'Pause' : (timerElapsed() > 0 ? 'Resume' : 'Start');
+      const nextLine = r.next
+        ? '<span class="text-zinc-500">UP NEXT</span> <i data-lucide="chevron-right" class="inline h-3 w-3 text-zinc-600"></i> <span class="text-zinc-300">' + escapeHtml(displayName(r.next.task)) + '</span> <span class="text-zinc-600">(' + fmtMin(r.next.task.effort) + ')</span>'
+        : '<span class="text-zinc-500">FINAL TASK IN THE SURVIVAL SCHEDULE</span>';
+
+      el.timerPanel.innerHTML = '' +
+        '<div class="relative overflow-hidden rounded-xl border border-amber-500/40 bg-zinc-900/90 p-5 shadow-[0_0_50px_-15px_rgba(245,158,11,0.45)]">' +
+          '<div class="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-amber-500/10 blur-3xl"></div>' +
+          '<div class="relative flex items-center justify-between gap-2">' +
+            '<span class="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.25em] text-amber-400">' + dot + 'Live Panic Timer</span>' +
+            '<span class="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-amber-300">' + stateLabel + '</span>' +
+          '</div>' +
+          '<div class="relative mt-3">' +
+            '<div class="font-mono text-[10px] uppercase tracking-wider text-zinc-500">Now executing · #' + position + ' of ' + r.pendingCount + '</div>' +
+            '<h3 class="mt-0.5 text-lg font-semibold leading-snug text-zinc-50">' + escapeHtml(displayName(t)) + '</h3>' +
+            '<div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-zinc-400">' +
+              '<span class="text-amber-300">' + fmtClock(a.start) + ' → ' + fmtClock(a.end) + '</span>' +
+              '<span>' + fmtMin(t.effort) + ' planned</span>' +
+              '<span>IMP ' + t.impact + '/10</span>' +
+              '<span>ROI ' + fmtRoi(a.roi) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="relative mt-4 flex items-end justify-between gap-4">' +
+            '<div id="timer-clock" class="' + CLOCK_BASE + ' text-amber-400">--:--</div>' +
+            '<div class="pb-1 text-right font-mono text-[11px] text-zinc-500">' +
+              '<div id="timer-pct" class="text-sm font-semibold text-zinc-300">0%</div>' +
+              '<div><span id="timer-elapsed">00:00</span> elapsed</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="relative mt-3 h-2.5 overflow-hidden rounded-full bg-zinc-800">' +
+            '<div id="timer-bar" class="' + BAR_BASE + ' bg-amber-500" style="width:0%"></div>' +
+          '</div>' +
+          '<div class="relative mt-4 grid grid-cols-3 gap-2">' +
+            '<button type="button" data-action="timer-toggle" class="flex items-center justify-center gap-1.5 rounded-lg bg-amber-500 px-3 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-400 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">' +
+              '<i data-lucide="' + toggleIcon + '" class="h-4 w-4"></i>' + toggleText +
+            '</button>' +
+            '<button type="button" data-action="timer-reset" class="flex items-center justify-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/70 px-3 py-2.5 text-sm font-medium text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500">' +
+              '<i data-lucide="rotate-ccw" class="h-4 w-4"></i>Reset' +
+            '</button>' +
+            '<button type="button" data-action="timer-complete" class="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-2 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">' +
+              '<i data-lucide="check" class="h-4 w-4"></i><span class="truncate">Complete &amp; Next</span>' +
+            '</button>' +
+          '</div>' +
+          '<div class="relative mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800 pt-3 font-mono text-[11px]">' +
+            '<div class="min-w-0 truncate">' + nextLine + '</div>' +
+            '<div class="hidden items-center gap-1.5 text-zinc-600 md:flex"><i data-lucide="keyboard" class="h-3 w-3"></i>Space · N · R</div>' +
+          '</div>' +
+        '</div>';
+
+      updateTimerDom();
+    }
+
+    function updateTimerDom() {
+      const clock = document.getElementById('timer-clock');
+      if (!clock || !lastResult || !lastResult.active) return;
+      const task = lastResult.active.task;
+      const effortMs = task.effort * 60000;
+      const elapsed = timer.taskId === task.id ? timerElapsed() : 0;
+      const remaining = effortMs - elapsed;
+      const over = remaining < 0;
+      const pct = effortMs ? clamp((elapsed / effortMs) * 100, 0, 100) : 0;
+
+      clock.textContent = over ? '+' + fmtCountdown(-remaining) : fmtCountdown(Math.ceil(remaining / 1000) * 1000);
+      clock.className = CLOCK_BASE + (over ? ' text-rose-500' : (timer.running ? ' text-amber-400' : ' text-amber-400/70'));
+
+      const bar = document.getElementById('timer-bar');
+      if (bar) {
+        bar.style.width = pct.toFixed(2) + '%';
+        bar.className = BAR_BASE + (over ? ' bg-rose-500' : ' bg-amber-500') + (timer.running ? ' stripes' : '');
+      }
+      const pctEl = document.getElementById('timer-pct');
+      if (pctEl) {
+        pctEl.textContent = over ? 'OVERTIME' : Math.floor(pct) + '%';
+        pctEl.className = 'text-sm font-semibold ' + (over ? 'text-rose-400' : 'text-zinc-300');
+      }
+      const elapsedEl = document.getElementById('timer-elapsed');
+      if (elapsedEl) elapsedEl.textContent = fmtCountdown(elapsed);
+    }
+
+    function updateDeadline() {
+      if (!lastResult) return;
+      const diff = lastResult.deadline - Date.now();
+      if (diff >= 0) {
+        el.deadline.innerHTML = 'DEADLINE <span class="text-zinc-300">' + fmtClock(lastResult.deadline) + '</span> · <span class="text-amber-400">T−' + fmtCountdown(diff) + '</span>';
+      } else {
+        el.deadline.innerHTML = '<span class="text-rose-400">DEADLINE PASSED ' + fmtClock(lastResult.deadline) + ' · +' + fmtCountdown(-diff) + '</span>';
+      }
+    }
+
+    function renderExec(r) {
+      el.execMeta.textContent = r.exec.length
+        ? r.exec.length + ' task' + (r.exec.length === 1 ? '' : 's') + ' · ' + fmtMin(r.used) + ' · ' + r.impactPct + '% impact'
+        : '0 tasks';
+
+      if (!r.exec.length) {
+        el.execList.innerHTML = '' +
+          '<li class="flex items-center gap-3 rounded-lg border border-dashed border-zinc-800 p-4 text-sm text-zinc-500">' +
+            '<i data-lucide="info" class="h-4 w-4 text-zinc-600"></i>' +
+            (state.tasks.length ? 'No task fits the usable window of ' + fmtMin(r.capacity) + '.' : 'Nothing queued yet.') +
+          '</li>';
+        return;
+      }
+
+      el.execList.innerHTML = r.exec.map((e, i) => {
+        const t = e.task;
+        const idx = pad(i + 1);
+        if (e.status === 'done') {
+          return '' +
+            '<li class="group flex items-center gap-3 rounded-lg border border-zinc-800/70 bg-zinc-950/30 p-3 transition hover:border-zinc-700">' +
+              '<div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-800 text-emerald-500 ring-1 ring-zinc-700"><i data-lucide="check" class="h-4 w-4"></i></div>' +
+              '<div class="min-w-0 flex-1">' +
+                '<div class="font-mono text-[11px] text-zinc-500">DONE @ ' + fmtClock(t.completedAt) + (t.actualMin > 0 ? ' · took ' + fmtMin(t.actualMin) : '') + '</div>' +
+                '<div class="truncate text-sm text-zinc-500">' + escapeHtml(displayName(t)) + '</div>' +
+              '</div>' +
+              '<button type="button" data-action="undo" data-id="' + t.id + '" title="Mark as not done" aria-label="Mark as not done" class="rounded-md p-1.5 text-zinc-600 opacity-70 transition hover:bg-zinc-800 hover:text-zinc-200 group-hover:opacity-100">' +
+                '<i data-lucide="undo-2" class="h-4 w-4"></i>' +
+              '</button>' +
+            '</li>';
+        }
+        const live = e.status === 'live';
+        const container = live
+          ? 'border-amber-500/50 bg-amber-500/[0.06] shadow-[0_0_24px_-10px_rgba(245,158,11,0.6)]'
+          : 'border-zinc-800 bg-zinc-950/50 hover:border-emerald-500/40 hover:bg-emerald-500/[0.03]';
+        const badge = live
+          ? 'bg-amber-500/15 text-amber-300 ring-amber-500/40'
+          : 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/30';
+        return '' +
+          '<li class="group flex items-center gap-3 rounded-lg border p-3 transition ' + container + '">' +
+            '<div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md font-mono text-xs ring-1 ' + badge + '">' + idx + '</div>' +
+            '<div class="min-w-0 flex-1">' +
+              '<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[11px]">' +
+                '<span class="tabular-nums ' + (live ? 'text-amber-300' : 'text-emerald-400') + '">' + fmtClock(e.start) + ' → ' + fmtClock(e.end) + '</span>' +
+                (live ? '<span class="rounded bg-amber-500 px-1 text-[9px] font-bold tracking-wider text-zinc-950">LIVE</span>' : '') +
+                (e.late ? '<span class="flex items-center gap-1 text-[10px] text-amber-400"><i data-lucide="siren" class="h-3 w-3"></i>PAST DEADLINE</span>' : '') +
+              '</div>' +
+              '<div class="truncate text-sm text-zinc-100">' + escapeHtml(displayName(t)) + '</div>' +
+            '</div>' +
+            '<div class="shrink-0 text-right font-mono text-[11px] leading-tight text-zinc-500">' +
+              '<div class="text-zinc-300">' + fmtMin(t.effort) + '</div>' +
+              '<div>IMP ' + t.impact + ' · ROI ' + fmtRoi(e.roi) + '</div>' +
+            '</div>' +
+          '</li>';
+      }).join('');
+    }
+
+    function renderCut(r) {
+      el.cutMeta.textContent = r.cut.length + ' killed · ' + fmtMin(r.cutMinutes) + ' saved';
+
+      if (!r.cut.length) {
+        el.cutList.innerHTML = '' +
+          '<li class="flex items-center gap-3 rounded-lg border border-dashed border-zinc-800 p-4 text-sm text-zinc-500">' +
+            '<i data-lucide="shield-check" class="h-4 w-4 text-emerald-500"></i>' +
+            (state.tasks.length ? 'Nothing to cut — everything fits. Protect that margin.' : 'Kill list is empty.') +
+          '</li>';
+        return;
+      }
+
+      el.cutList.innerHTML = r.cut.map((c) => {
+        const t = c.task;
+        return '' +
+          '<li class="flex items-center gap-3 rounded-lg border border-rose-500/20 bg-rose-500/[0.03] p-3 transition hover:border-rose-500/40 hover:bg-rose-500/[0.06]">' +
+            '<div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-rose-500/10 text-rose-500 ring-1 ring-rose-500/30"><i data-lucide="x" class="h-4 w-4"></i></div>' +
+            '<div class="min-w-0 flex-1">' +
+              '<div class="truncate text-sm text-zinc-400 line-through decoration-rose-500/80 decoration-2">' + escapeHtml(displayName(t)) + '</div>' +
+              '<div class="truncate font-mono text-[11px] text-zinc-500">' + escapeHtml(c.detail) + ' · IMP ' + t.impact + '</div>' +
+            '</div>' +
+            '<div class="shrink-0 text-right">' +
+              '<span class="inline-block rounded border border-rose-500/40 bg-rose-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider text-rose-400">' + c.tag + '</span>' +
+              '<div class="mt-1 font-mono text-xs tabular-nums text-rose-400">−' + fmtMin(t.effort) + ' saved</div>' +
+            '</div>' +
+          '</li>';
+      }).join('');
+    }
+
+    function renderTaskList(r) {
+      el.taskCount.textContent = state.tasks.length;
+      if (!state.tasks.length) {
+        el.taskList.innerHTML = '' +
+          '<li class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-zinc-800 p-6 text-center">' +
+            '<i data-lucide="inbox" class="h-6 w-6 text-zinc-600"></i>' +
+            '<p class="text-sm text-zinc-500">Backlog empty. Add a task above or load a preset.</p>' +
+          '</li>';
+        return;
+      }
+
+      el.taskList.innerHTML = state.tasks.map((t) => {
+        const s = STATUS[r.statusById.get(t.id) || 'cut'];
+        const inputBox = 'flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 font-mono text-xs text-zinc-400 transition focus-within:border-amber-500/60 hover:border-zinc-700';
+        return '' +
+          '<li data-id="' + t.id + '" class="group flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-1.5 transition-colors hover:border-zinc-700">' +
+            '<span data-role="strip" class="h-9 w-1 shrink-0 rounded-full ' + s.strip + '"></span>' +
+            '<div class="min-w-0 flex-1">' +
+              '<input data-field="name" type="text" maxlength="80" value="' + escapeHtml(t.name) + '" aria-label="Task name" ' +
+                'class="w-full truncate rounded bg-transparent px-1.5 py-0.5 text-sm outline-none ring-amber-500/50 transition focus:bg-zinc-900 focus:ring-1 ' + (t.done ? 'text-zinc-500' : 'text-zinc-100') + '">' +
+              '<div class="flex items-center gap-2 px-1.5 font-mono text-[10px] uppercase tracking-wider">' +
+                '<span data-role="status" class="' + s.text + '">' + s.label + '</span>' +
+                '<span class="text-zinc-600">ROI <span data-role="roi" class="text-zinc-400">' + fmtRoi(t.impact / t.effort) + '</span></span>' +
+              '</div>' +
+            '</div>' +
+            '<label class="' + inputBox + '" title="Effort (minutes)">' +
+              '<i data-lucide="clock" class="h-3 w-3 text-zinc-500"></i>' +
+              '<input data-field="effort" type="number" min="1" max="' + MAX_EFFORT + '" step="1" inputmode="numeric" value="' + t.effort + '" aria-label="Effort in minutes" class="no-spin w-9 bg-transparent text-right text-zinc-100 outline-none">' +
+              '<span class="text-zinc-600">m</span>' +
+            '</label>' +
+            '<label class="' + inputBox + '" title="Impact (1–10)">' +
+              '<i data-lucide="zap" class="h-3 w-3 text-zinc-500"></i>' +
+              '<input data-field="impact" type="number" min="1" max="10" step="1" inputmode="numeric" value="' + t.impact + '" aria-label="Impact score 1 to 10" class="no-spin w-6 bg-transparent text-right text-zinc-100 outline-none">' +
+              '<span class="text-zinc-600">/10</span>' +
+            '</label>' +
+            '<button type="button" data-action="delete" data-id="' + t.id + '" aria-label="Delete task" title="Delete task" class="rounded-md p-1.5 text-zinc-600 transition hover:bg-rose-500/10 hover:text-rose-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50">' +
+              '<i data-lucide="trash-2" class="h-4 w-4"></i>' +
+            '</button>' +
+          '</li>';
+      }).join('');
+    }
+
+    function updateTaskRowMeta(r) {
+      el.taskCount.textContent = state.tasks.length;
+      el.taskList.querySelectorAll('li[data-id]').forEach((row) => {
+        const t = findTask(row.dataset.id);
+        if (!t) return;
+        const s = STATUS[r.statusById.get(t.id) || 'cut'];
+        const strip = row.querySelector('[data-role="strip"]');
+        const label = row.querySelector('[data-role="status"]');
+        const roi = row.querySelector('[data-role="roi"]');
+        if (strip) strip.className = 'h-9 w-1 shrink-0 rounded-full ' + s.strip;
+        if (label) {
+          label.className = s.text;
+          label.textContent = s.label;
+        }
+        if (roi) roi.textContent = fmtRoi(t.impact / t.effort);
+      });
+    }
+
+    /* ---------- Toast ---------- */
+
+    function showToast(message, tone) {
+      const tones = {
+        emerald: { cls: 'border-emerald-500/40 text-emerald-300', icon: 'check' },
+        rose: { cls: 'border-rose-500/40 text-rose-300', icon: 'scissors' },
+        amber: { cls: 'border-amber-500/40 text-amber-300', icon: 'zap' }
+      };
+      const t = tones[tone] || tones.emerald;
+      el.toastInner.className = 'flex items-center gap-2 rounded-lg border bg-zinc-900/95 px-4 py-2.5 font-mono text-sm shadow-2xl shadow-black/50 backdrop-blur ' + t.cls;
+      el.toastIcon.innerHTML = '<i data-lucide="' + t.icon + '" class="h-4 w-4"></i>';
+      el.toastMsg.textContent = message;
+      icons();
+      el.toast.classList.remove('translate-y-4', 'opacity-0');
+      el.toast.classList.add('translate-y-0', 'opacity-100');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        el.toast.classList.remove('translate-y-0', 'opacity-100');
+        el.toast.classList.add('translate-y-4', 'opacity-0');
+      }, 2000);
+    }
+
+    /* ---------- Actions ---------- */
+
+    function markCustom() {
+      state.preset = null;
+    }
+
+    function loadPreset(key, silent) {
+      const p = PRESETS[key];
+      if (!p) return;
+      state.minutes = p.minutes;
+      state.buffer = p.buffer;
+      state.sessionStart = Date.now();
+      state.tasks = p.tasks.map((t) => ({
+        id: uid(),
+        name: t.name,
+        effort: t.effort,
+        impact: t.impact,
+        done: false,
+        completedAt: null,
+        actualMin: 0
+      }));
+      state.preset = key;
+      resetTimerState();
+      autoStartNext = false;
+      el.addError.classList.add('hidden');
+      renderControls();
+      render();
+      if (!silent) showToast('Loaded ' + p.label + ' preset', 'amber');
+    }
+
+    function setMinutes(v, opts) {
+      const options = opts || {};
+      if (v !== state.minutes) {
+        state.minutes = v;
+        state.sessionStart = Date.now();
+        markCustom();
+        renderControls(options);
+        render({ list: false });
+      } else {
+        renderControls(options);
+      }
+    }
+
+    function toggleTimer() {
+      if (!lastResult || !lastResult.active || !timer.taskId) return;
+      if (timer.running) {
+        timer.accMs += Date.now() - timer.since;
+        timer.running = false;
+      } else {
+        timer.running = true;
+        timer.since = Date.now();
+      }
+      render({ list: false });
+    }
+
+    function resetTimer() {
+      if (!timer.taskId) return;
+      timer.accMs = 0;
+      timer.running = false;
+      timer.since = Date.now();
+      render({ list: false });
+    }
+
+    function completeActive() {
+      if (!lastResult || !lastResult.active) return;
+      const task = lastResult.active.task;
+      const elapsed = timer.taskId === task.id ? timerElapsed() : 0;
+      autoStartNext = timer.running;
+      task.done = true;
+      task.completedAt = Date.now();
+      task.actualMin = elapsed / 60000;
+      resetTimerState();
+      render();
+      showToast('Done: ' + displayName(task), 'emerald');
+    }
+
+    function undoTask(id) {
+      const t = findTask(id);
+      if (!t) return;
+      t.done = false;
+      t.completedAt = null;
+      t.actualMin = 0;
+      render();
+    }
+
+    function deleteTask(id) {
+      const idx = state.tasks.findIndex((t) => t.id === id);
+      if (idx === -1) return;
+      state.tasks.splice(idx, 1);
+      if (timer.taskId === id) resetTimerState();
+      markCustom();
+      render();
+    }
+
+    function clearAll() {
+      if (!state.tasks.length) return;
+      state.tasks = [];
+      resetTimerState();
+      markCustom();
+      render();
+      showToast('Backlog cleared', 'rose');
+    }
+
+    function addTask(evt) {
+      evt.preventDefault();
+      const name = el.addName.value.trim();
+      const effort = parseInt(el.addEffort.value, 10);
+      const impact = parseInt(el.addImpact.value, 10);
+      let error = '';
+      let field = null;
+      if (!name) {
+        error = 'Task name is required.';
+        field = el.addName;
+      } else if (!Number.isFinite(effort) || effort < 1 || effort > MAX_EFFORT) {
+        error = 'Effort must be 1–' + MAX_EFFORT + ' minutes.';
+        field = el.addEffort;
+      } else if (!Number.isFinite(impact) || impact < 1 || impact > 10) {
+        error = 'Impact must be an integer from 1 to 10.';
+        field = el.addImpact;
+      }
+      if (error) {
+        el.addError.textContent = error;
+        el.addError.classList.remove('hidden');
+        el.addForm.classList.remove('shake');
+        void el.addForm.offsetWidth;
+        el.addForm.classList.add('shake');
+        field.focus();
+        return;
+      }
+      el.addError.classList.add('hidden');
+      const task = { id: uid(), name, effort, impact, done: false, completedAt: null, actualMin: 0 };
+      state.tasks.push(task);
+      markCustom();
+      render();
+
+      const row = el.taskList.querySelector('li[data-id="' + task.id + '"]');
+      if (row) row.classList.add('flash-in');
+
+      const status = lastResult.statusById.get(task.id);
+      if (status === 'cut') {
+        const c = lastResult.cut.find((x) => x.task.id === task.id);
+        showToast('Added → CUT (' + (c ? c.tag : 'NO ROOM') + ')', 'rose');
+      } else {
+        showToast('Added → EXECUTE NOW', 'emerald');
+      }
+      el.addName.value = '';
+      el.addName.focus();
+    }
+
+    function buildMarkdown() {
+      const r = lastResult || triage();
+      const now = Date.now();
+      const L = [];
+      L.push('# TRIAGE // PANIC MODE — Survival Plan');
+      L.push('');
+      L.push('> Generated ' + fmtDate(now) + ' · Window ' + r.available + 'm' +
+        (state.buffer ? ' (10% buffer → ' + fmtMin(r.capacity) + ' usable)' : ' (no buffer)') +
+        ' · Deadline ' + fmtClock(r.deadline));
+      L.push('> Impact captured: ' + r.impactPct + '% · Time utilized: ' + fmtMin(r.used) + ' / ' + r.available + 'm · Tasks killed: ' + r.cut.length);
+      L.push('');
+      L.push('## EXECUTE NOW — Survival Schedule (' + r.exec.length + ')');
+      L.push('');
+      if (!r.exec.length) {
+        L.push('_Nothing fits in the usable window._');
+      } else {
+        r.exec.forEach((e) => {
+          const t = e.task;
+          if (e.status === 'done') {
+            L.push('- [x] **' + mdEscape(displayName(t)) + '** — done at ' + fmtClock(t.completedAt));
+          } else {
+            L.push('- [ ] `' + fmtClock(e.start) + ' → ' + fmtClock(e.end) + '` **' + mdEscape(displayName(t)) + '** — ' +
+              fmtMin(t.effort) + ' · impact ' + t.impact + '/10 · ROI ' + fmtRoi(e.roi) + (e.status === 'live' ? ' · **LIVE**' : ''));
+          }
+        });
+      }
+      L.push('');
+      L.push('## RUTHLESSLY CUT — Kill List (' + r.cut.length + ' · ' + fmtMin(r.cutMinutes) + ' saved)');
+      L.push('');
+      if (!r.cut.length) {
+        L.push('_Nothing cut — everything fits._');
+      } else {
+        r.cut.forEach((c) => {
+          L.push('- ~~' + mdEscape(displayName(c.task)) + '~~ — ' + fmtMin(c.task.effort) + ' saved · `' + c.tag + '` · ' + c.detail);
+        });
+      }
+      L.push('');
+      return L.join('\n');
+    }
+
+    async function copyText(text) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (err) {
+        /* fall through to legacy copy */
+      }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-1000px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return ok;
+      } catch (err) {
+        return false;
+      }
+    }
+
+    async function copyMarkdown() {
+      const ok = await copyText(buildMarkdown());
+      if (ok) {
+        showToast('Copied! Markdown plan on your clipboard', 'emerald');
+        el.copyLabel.textContent = 'Copied!';
+        clearTimeout(copyTimeout);
+        copyTimeout = setTimeout(() => { el.copyLabel.textContent = 'Copy Markdown Plan'; }, 1600);
+      } else {
+        showToast('Clipboard blocked by browser', 'rose');
+      }
+    }
+
+    /* ---------- Events ---------- */
+
+    document.addEventListener('click', (e) => {
+      const presetBtn = e.target.closest('[data-preset]');
+      if (presetBtn) {
+        loadPreset(presetBtn.dataset.preset, false);
+        return;
+      }
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      switch (btn.dataset.action) {
+        case 'set-minutes':
+          setMinutes(parseInt(btn.dataset.minutes, 10));
+          break;
+        case 'buffer-toggle':
+          state.buffer = !state.buffer;
+          markCustom();
+          renderControls();
+          render({ list: false });
+          break;
+        case 'timer-toggle':
+          toggleTimer();
+          break;
+        case 'timer-reset':
+          resetTimer();
+          break;
+        case 'timer-complete':
+          completeActive();
+          break;
+        case 'undo':
+          undoTask(btn.dataset.id);
+          break;
+        case 'delete':
+          deleteTask(btn.dataset.id);
+          break;
+        case 'clear-all':
+          clearAll();
+          break;
+        case 'copy-md':
+          copyMarkdown();
+          break;
+        default:
+          break;
+      }
+    });
+
+    el.timeInput.addEventListener('input', () => {
+      const v = parseInt(el.timeInput.value, 10);
+      if (Number.isFinite(v) && v >= MIN_TIME && v <= MAX_TIME) {
+        el.timeInput.classList.remove('invalid');
+        setMinutes(v, { skipNumber: true });
+      } else {
+        el.timeInput.classList.add('invalid');
+      }
+    });
+
+    el.timeInput.addEventListener('change', () => {
+      let v = parseInt(el.timeInput.value, 10);
+      if (!Number.isFinite(v)) v = state.minutes;
+      el.timeInput.classList.remove('invalid');
+      setMinutes(clamp(v, MIN_TIME, MAX_TIME));
+    });
+
+    el.timeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') el.timeInput.blur();
+    });
+
+    el.timeRange.addEventListener('input', () => {
+      el.timeInput.classList.remove('invalid');
+      setMinutes(parseInt(el.timeRange.value, 10));
+    });
+
+    el.addForm.addEventListener('submit', addTask);
+    el.addName.addEventListener('input', () => el.addError.classList.add('hidden'));
+
+    el.taskList.addEventListener('input', (e) => {
+      const input = e.target.closest('[data-field]');
+      if (!input) return;
+      const row = input.closest('li[data-id]');
+      const task = row ? findTask(row.dataset.id) : null;
+      if (!task) return;
+      const field = input.dataset.field;
+      if (field === 'name') {
+        task.name = input.value;
+      } else {
+        const v = parseInt(input.value, 10);
+        const max = field === 'effort' ? MAX_EFFORT : 10;
+        if (!Number.isFinite(v) || v < 1 || v > max) {
+          input.classList.add('invalid');
+          return;
+        }
+        input.classList.remove('invalid');
+        task[field] = v;
+      }
+      markCustom();
+      render({ list: false });
+    });
+
+    el.taskList.addEventListener('change', (e) => {
+      const input = e.target.closest('[data-field]');
+      if (!input) return;
+      const row = input.closest('li[data-id]');
+      const task = row ? findTask(row.dataset.id) : null;
+      if (!task) return;
+      const field = input.dataset.field;
+      if (field === 'name') {
+        const trimmed = input.value.trim();
+        task.name = trimmed || 'Untitled task';
+        input.value = task.name;
+      } else {
+        const max = field === 'effort' ? MAX_EFFORT : 10;
+        let v = parseInt(input.value, 10);
+        if (!Number.isFinite(v)) v = task[field];
+        task[field] = clamp(v, 1, max);
+        input.value = task[field];
+        input.classList.remove('invalid');
+      }
+      render({ list: false });
+    });
+
+    el.taskList.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.matches('[data-field]')) e.target.blur();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target;
+      const tag = target && target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || (target && target.isContentEditable)) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        toggleTimer();
+      } else if (e.key === 'n' || e.key === 'N') {
+        completeActive();
+      } else if (e.key === 'r' || e.key === 'R') {
+        resetTimer();
+      }
+    });
+
+    /* ---------- Clock loop ---------- */
+
+    function tick() {
+      const now = Date.now();
+      el.liveClock.textContent = fmtClockSec(now);
+      const minuteKey = Math.floor(now / 60000);
+      if (minuteKey !== lastMinuteKey) {
+        lastMinuteKey = minuteKey;
+        render({ list: false });
+        return;
+      }
+      updateTimerDom();
+      updateDeadline();
+    }
+
+    loadPreset('hackathon', true);
+    tick();
+    setInterval(tick, 250);
+  })();
+  </script>
+</body>
+</html>
