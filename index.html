@@ -441,6 +441,15 @@
       }
     }
 
+    const htmlCache = new WeakMap();
+
+    // Rebuilding a panel between mousedown and mouseup swallows the click, so only touch the DOM on real changes.
+    function setHtml(node, html) {
+      if (htmlCache.get(node) === html) return;
+      htmlCache.set(node, html);
+      node.innerHTML = html;
+    }
+
     function findTask(id) {
       return state.tasks.find((t) => t.id === id) || null;
     }
@@ -660,7 +669,7 @@
       const over = r.used > r.capacity + 1e-9;
       const usedPct = r.available ? (r.used / r.available) * 100 : 0;
       const killedPct = state.tasks.length ? (r.cut.length / state.tasks.length) * 100 : 0;
-      el.kpis.innerHTML =
+      setHtml(el.kpis,
         kpiCard({
           label: 'Impact Captured',
           icon: 'target',
@@ -687,7 +696,7 @@
           sub: fmtMin(r.cutMinutes) + ' saved',
           bar: killedPct,
           barCls: 'bg-rose-500'
-        });
+        }));
     }
 
     function emptyPanel(icon, tone, title, body) {
@@ -705,18 +714,18 @@
 
     function renderTimer(r) {
       if (!state.tasks.length) {
-        el.timerPanel.innerHTML = emptyPanel('inbox', 'zinc', 'No tasks loaded', 'Add a task on the left or load a preset to start triage.');
+        setHtml(el.timerPanel, emptyPanel('inbox', 'zinc', 'No tasks loaded', 'Add a task on the left or load a preset to start triage.'));
         return;
       }
       if (!r.active) {
         if (r.doneCount && !r.pendingCount) {
-          el.timerPanel.innerHTML = emptyPanel('check-check', 'emerald', 'Survival schedule complete',
+          setHtml(el.timerPanel, emptyPanel('check-check', 'emerald', 'Survival schedule complete',
             r.cut.length
               ? 'Every executable task is done. ' + r.cut.length + ' cut task' + (r.cut.length === 1 ? '' : 's') + ' remain — only revisit if real time is left.'
-              : 'Every task is done. Ship it.');
+              : 'Every task is done. Ship it.'));
         } else {
-          el.timerPanel.innerHTML = emptyPanel('siren', 'rose', 'Nothing fits',
-            'Every task exceeds the usable window of ' + fmtMin(r.capacity) + '. Add time, drop the buffer, or split tasks smaller.');
+          setHtml(el.timerPanel, emptyPanel('siren', 'rose', 'Nothing fits',
+            'Every task exceeds the usable window of ' + fmtMin(r.capacity) + '. Add time, drop the buffer, or split tasks smaller.'));
         }
         return;
       }
@@ -734,7 +743,7 @@
         ? '<span class="text-zinc-500">UP NEXT</span> <i data-lucide="chevron-right" class="inline h-3 w-3 text-zinc-600"></i> <span class="text-zinc-300">' + escapeHtml(displayName(r.next.task)) + '</span> <span class="text-zinc-600">(' + fmtMin(r.next.task.effort) + ')</span>'
         : '<span class="text-zinc-500">FINAL TASK IN THE SURVIVAL SCHEDULE</span>';
 
-      el.timerPanel.innerHTML = '' +
+      setHtml(el.timerPanel, '' +
         '<div class="relative overflow-hidden rounded-xl border border-amber-500/40 bg-zinc-900/90 p-5 shadow-[0_0_50px_-15px_rgba(245,158,11,0.45)]">' +
           '<div class="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-amber-500/10 blur-3xl"></div>' +
           '<div class="relative flex items-center justify-between gap-2">' +
@@ -776,7 +785,7 @@
             '<div class="min-w-0 truncate">' + nextLine + '</div>' +
             '<div class="hidden items-center gap-1.5 text-zinc-600 md:flex"><i data-lucide="keyboard" class="h-3 w-3"></i>Space · N · R</div>' +
           '</div>' +
-        '</div>';
+        '</div>');
 
       updateTimerDom();
     }
@@ -824,15 +833,15 @@
         : '0 tasks';
 
       if (!r.exec.length) {
-        el.execList.innerHTML = '' +
+        setHtml(el.execList, '' +
           '<li class="flex items-center gap-3 rounded-lg border border-dashed border-zinc-800 p-4 text-sm text-zinc-500">' +
             '<i data-lucide="info" class="h-4 w-4 text-zinc-600"></i>' +
             (state.tasks.length ? 'No task fits the usable window of ' + fmtMin(r.capacity) + '.' : 'Nothing queued yet.') +
-          '</li>';
+          '</li>');
         return;
       }
 
-      el.execList.innerHTML = r.exec.map((e, i) => {
+      setHtml(el.execList, r.exec.map((e, i) => {
         const t = e.task;
         const idx = pad(i + 1);
         if (e.status === 'done') {
@@ -871,22 +880,22 @@
               '<div>IMP ' + t.impact + ' · ROI ' + fmtRoi(e.roi) + '</div>' +
             '</div>' +
           '</li>';
-      }).join('');
+      }).join(''));
     }
 
     function renderCut(r) {
       el.cutMeta.textContent = r.cut.length + ' killed · ' + fmtMin(r.cutMinutes) + ' saved';
 
       if (!r.cut.length) {
-        el.cutList.innerHTML = '' +
+        setHtml(el.cutList, '' +
           '<li class="flex items-center gap-3 rounded-lg border border-dashed border-zinc-800 p-4 text-sm text-zinc-500">' +
             '<i data-lucide="shield-check" class="h-4 w-4 text-emerald-500"></i>' +
             (state.tasks.length ? 'Nothing to cut — everything fits. Protect that margin.' : 'Kill list is empty.') +
-          '</li>';
+          '</li>');
         return;
       }
 
-      el.cutList.innerHTML = r.cut.map((c) => {
+      setHtml(el.cutList, r.cut.map((c) => {
         const t = c.task;
         return '' +
           '<li class="flex items-center gap-3 rounded-lg border border-rose-500/20 bg-rose-500/[0.03] p-3 transition hover:border-rose-500/40 hover:bg-rose-500/[0.06]">' +
@@ -900,7 +909,7 @@
               '<div class="mt-1 font-mono text-xs tabular-nums text-rose-400">−' + fmtMin(t.effort) + ' saved</div>' +
             '</div>' +
           '</li>';
-      }).join('');
+      }).join(''));
     }
 
     function renderTaskList(r) {
@@ -1317,6 +1326,7 @@
       const task = row ? findTask(row.dataset.id) : null;
       if (!task) return;
       const field = input.dataset.field;
+      const before = task[field];
       if (field === 'name') {
         const trimmed = input.value.trim();
         task.name = trimmed || 'Untitled task';
@@ -1329,7 +1339,7 @@
         input.value = task[field];
         input.classList.remove('invalid');
       }
-      render({ list: false });
+      if (task[field] !== before) render({ list: false });
     });
 
     el.taskList.addEventListener('keydown', (e) => {
